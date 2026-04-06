@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<title>Reward DApp</title>
+</head>
+
+<body style="background:#0e1520;color:white;font-family:sans-serif;display:flex;justify-content:center;align-items:center;height:100vh;">
+
+<div style="background:#111;padding:30px;border-radius:12px;width:320px;text-align:center;">
+
+<img src="logo.png" width="80" style="margin-bottom:10px;">
+
+<h2>TOJI</h2>
+
+<p>TOJI é um token de recompensa Web3 que distribui recompensas automaticamente através de um sistema descentralizado.</p>
+
+<p id="wallet">Não conectado</p>
+<p id="balance"></p>
+<p id="cooldown"></p>
+
+<button onclick="connectWallet()">Conectar Wallet</button>
+<br><br>
+<button onclick="claimReward()" id="claimBtn" disabled>Claim Reward</button>
+
+<p id="status"></p>
+
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/5.7.2/ethers.umd.min.js"></script>
+
+<script>
+
+let provider, signer, contract, token;
+
+const contractAddress = "0xa5614Ab0CCA9Cc8daBaA713E1469aA65E72B696f";
+const tokenAddress = "0xED744b0E3D3906482840b56e35AFf1bff5d0D412";
+
+const abi = [
+  "function claimReward() public",
+  "function cooldown() view returns (uint)",
+  "function lastClaim(address) view returns (uint)"
+];
+
+const tokenAbi = [
+  "function balanceOf(address) view returns (uint)",
+  "function decimals() view returns (uint)"
+];
+
+const walletText = document.getElementById("wallet");
+const status = document.getElementById("status");
+const balanceText = document.getElementById("balance");
+const cooldownText = document.getElementById("cooldown");
+const claimBtn = document.getElementById("claimBtn");
+
+function short(addr){
+  return addr.slice(0,6)+"..."+addr.slice(-4);
+}
+
+function setStatus(msg){
+  status.innerText = msg;
+}
+
+async function connectWallet(){
+
+  await window.ethereum.request({ method: 'eth_requestAccounts' });
+
+  provider = new ethers.providers.Web3Provider(window.ethereum);
+  signer = provider.getSigner();
+
+  const network = await provider.getNetwork();
+
+  if(network.chainId !== 11155111){
+    setStatus("Use Sepolia");
+    return;
+  }
+
+  contract = new ethers.Contract(contractAddress, abi, signer);
+  token = new ethers.Contract(tokenAddress, tokenAbi, signer);
+
+  const address = await signer.getAddress();
+
+  walletText.innerText = short(address);
+  claimBtn.disabled = false;
+
+  updateData();
+
+}
+
+async function updateData(){
+
+  const address = await signer.getAddress();
+
+  // saldo
+  const balance = await token.balanceOf(address);
+  const decimals = await token.decimals();
+  balanceText.innerText = "Saldo: " + ethers.utils.formatUnits(balance, decimals);
+
+  // cooldown
+  const last = await contract.lastClaim(address);
+  const cd = await contract.cooldown();
+
+  const now = Math.floor(Date.now()/1000);
+  const remaining = (Number(last) + Number(cd)) - now;
+
+  if(remaining > 0){
+    cooldownText.innerText = "Aguarde: " + remaining + "s";
+    claimBtn.disabled = true;
+  } else {
+    cooldownText.innerText = "Pronto!";
+    claimBtn.disabled = false;
+  }
+}
+
+async function claimReward(){
+
+  const tx = await contract.claimReward();
+
+  setStatus("Confirmando...");
+  await tx.wait();
+
+  setStatus("Recebido!");
+
+  updateData();
+}
+
+setInterval(()=>{
+  if(contract) updateData();
+},1000);
+
+</script>
+
+</body>
+</html>
